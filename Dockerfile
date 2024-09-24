@@ -24,13 +24,15 @@ RUN pip install poetry==$POETRY_VERSION && \
         -o /opt/mlserver/dist/constraints.txt && \
     sed -i 's/\[.*\]//g' /opt/mlserver/dist/constraints.txt
 
-FROM registry.access.redhat.com/ubi9/ubi-minimal
+#FROM registry.access.redhat.com/ubi9/ubi-minimal
+FROM 724664234782.dkr.ecr.us-east-1.amazonaws.com/docker.io/library/rockylinux:9.3.20231119-minimal
 SHELL ["/bin/bash", "-c"]
 
 ARG PYTHON_VERSION=3.10.12
 ARG CONDA_VERSION=23.11.0
 ARG MINIFORGE_VERSION=${CONDA_VERSION}-0
-ARG RUNTIMES="all"
+#ARG RUNTIMES="all"
+ARG RUNTIMES="mlserver_sklearn"
 
 # Set a few default environment variables, including `LD_LIBRARY_PATH`
 # (required to use GKE's injected CUDA libraries).
@@ -83,6 +85,7 @@ RUN useradd -u 1000 -s /bin/bash mlserver -d $MLSERVER_PATH && \
     chmod -R 776 $MLSERVER_PATH
 
 COPY --from=wheel-builder /opt/mlserver/dist ./dist
+RUN ls ./dist
 # NOTE: if runtime is "all" we install mlserver-<version>-py3-none-any.whl
 # we have to use this syntax to return the correct file: $(ls ./dist/mlserver-*.whl)
 # NOTE: Temporarily excluding mllib from the main image due to:
@@ -91,7 +94,8 @@ COPY --from=wheel-builder /opt/mlserver/dist ./dist
 # NOTE: Removing explicitly requirements.txt file from spaCy's test
 # dependencies causing false positives in Snyk.
 RUN . $CONDA_PATH/etc/profile.d/conda.sh && \
-    pip install --upgrade pip wheel setuptools && \
+    #pip install --force-reinstall pip && \
+    pip install --upgrade wheel setuptools && \
     if [[ $RUNTIMES == "all" ]]; then \
         for _wheel in "./dist/mlserver_"*.whl; do \
             if [[ ! $_wheel == *"mllib"* ]]; then \
@@ -119,6 +123,31 @@ COPY \
     ./hack/activate-env.sh \
     ./hack/
 
+RUN microdnf remove -y \
+    python3.9 glib2-devel python-unversioned-command python3-setuptools-wheel python3-libs \
+    libX11 libX11-common libX11-xcb libXext mesa-libGL libXfixes libglvnd-glx libXxf86vm   &&\
+    pip install --upgrade certifi tqdm requests urllib3 && \
+    microdnf upgrade -y &&  \
+    microdnf clean all -y
+
+#Remove force remove rpms since these are dependant on microdnf
+#RPM uninstall could not find files to uninstall
+RUN rpm -e \
+#            pcre2  \
+#            pcre2-devel  \
+#            pcre2-syntax  \
+#            pcre2-utf16  \
+#            pcre2-utf32  \
+           microdnf \
+           openldap  \
+           gawk  \
+           tar  \
+           # This is the os version of python certifi which is managed by pip
+           ca-certificates  \
+           libzstd  \
+           libyaml  \
+           --nodeps
+
 USER 1000
 
 # We need to build and activate the "hot-loaded" environment before MLServer
@@ -126,3 +155,4 @@ USER 1000
 CMD . $CONDA_PATH/etc/profile.d/conda.sh && \
     source ./hack/activate-env.sh $MLSERVER_ENV_TARBALL && \
     mlserver start $MLSERVER_MODELS_DIR
+
