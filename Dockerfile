@@ -127,6 +127,7 @@ RUN microdnf remove -y \
     python3.9 glib2-devel python-unversioned-command python3-setuptools-wheel python3-libs \
     libX11 libX11-common libX11-xcb libXext mesa-libGL libXfixes libglvnd-glx libXxf86vm   &&\
     pip install --upgrade certifi tqdm requests urllib3 && \
+    pip install --upgrade aiohttp python-multipart starlette && \
     microdnf upgrade -y &&  \
     microdnf clean all -y
 
